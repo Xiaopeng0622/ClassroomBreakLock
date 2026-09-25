@@ -140,12 +140,20 @@ public sealed class AuthConfig
     public TotpAuth Totp { get; set; } = new();
     public EmergencyAuth Emergency { get; set; } = new();
 
-    /// <summary>是否允许"下课按钮点击即解锁"（不需要任何凭据）。</summary>
+    /// <summary>
+    /// 【已废弃】旧语义下用于"允许点击下课按钮免凭据解锁"。
+    /// 现在「下课」按钮的语义已改为**手动上锁**（确认后锁屏），解锁一律需要凭据，
+    /// 因此本项不再有任何作用，仅为兼容老配置文件而保留。
+    /// </summary>
+    [Obsolete("下课按钮已改为手动上锁入口，解锁一律需凭据。此项不再生效。")]
     public bool AllowButtonUnlockWithoutAuth { get; set; } = true;
 
     /// <summary>任意一种认证通过后，解锁持续多少分钟；0 = 直到下个锁屏时段开始时重新锁。</summary>
     public int UnlockDurationMinutes { get; set; } = 0;
 
+    // Clone 里要原样搬运已废弃字段，避免它在"改设置再保存"时被静默清掉。
+    // 这里显式压制过时警告，别把噪音带到构建输出里。
+#pragma warning disable CS0618
     public AuthConfig Clone() => new()
     {
         UsbKeys = UsbKeys.Select(k => k.Clone()).ToList(),
@@ -155,4 +163,5 @@ public sealed class AuthConfig
         AllowButtonUnlockWithoutAuth = AllowButtonUnlockWithoutAuth,
         UnlockDurationMinutes = UnlockDurationMinutes
     };
+#pragma warning restore CS0618
 }

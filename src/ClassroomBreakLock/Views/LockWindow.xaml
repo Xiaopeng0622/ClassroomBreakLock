@@ -23,8 +23,32 @@
     </Window.Resources>
 
     <Grid>
-        <!-- ===== 背景：深色 + 天依蓝光晕（无边框分层） ===== -->
+        <!-- ===== 背景：三层叠加 =====
+             1) 内置深色渐变（始终在，作为兜底）
+             2) 自定义背景图（可开关，带模糊与不透明度）
+             3) 遮罩层（压暗，保证浅色图上白字可读）
+             4) 天依蓝光晕（装饰）
+        -->
+
+        <!-- 1) 内置深色底 -->
         <Rectangle Fill="{StaticResource LockBackdrop}"/>
+
+        <!-- 2) 自定义背景图（未启用时整层隐藏） -->
+        <Image x:Name="BackgroundImage" Stretch="UniformToFill"
+               Visibility="Collapsed" IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality">
+            <Image.Effect>
+                <!-- 模糊半径由代码按配置设置；为 0 时整个 Effect 会被移除 -->
+                <BlurEffect x:Name="BackgroundBlur" Radius="0"
+                            KernelType="Gaussian" RenderingBias="Performance"/>
+            </Image.Effect>
+        </Image>
+
+        <!-- 3) 遮罩：压暗背景图，保证前景文字对比度 -->
+        <Rectangle x:Name="BackgroundOverlay" Fill="#000000" Opacity="0"
+                   IsHitTestVisible="False"/>
+
+        <!-- 4) 天依蓝光晕 -->
         <Rectangle Fill="{StaticResource LockGlow}" IsHitTestVisible="False"/>
 
         <Grid Margin="72,52,72,44">
@@ -38,7 +62,7 @@
             <Grid Grid.Row="0">
                 <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top">
                     <StackPanel Orientation="Horizontal">
-                        <Border Background="{StaticResource AccentGradient}"
+                        <Border Background="{StaticResource AccentGradientPink}"
                                 CornerRadius="{StaticResource RadiusControl}" Padding="14,6"
                                 VerticalAlignment="Center">
                             <TextBlock Text="🌸 课间锁定" FontSize="13" FontWeight="SemiBold"
@@ -48,8 +72,10 @@
                                    Foreground="{StaticResource DarkInk2Brush}"
                                    Margin="14,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="StatusText" Text="状态加载中…" Style="{StaticResource LockSub}"
-                               Margin="0,14,0,0" MaxWidth="700"/>
+                    <!-- 每日一言（原先这里是个永远显示"状态加载中…"的死控件） -->
+                    <TextBlock x:Name="DailyQuoteText" Text="" Style="{StaticResource LockSub}"
+                               FontSize="13.5" Margin="0,14,0,0" MaxWidth="700"
+                               TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">

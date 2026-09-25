@@ -94,6 +94,61 @@ public static class ScheduleChecks
         var v15 = new ScheduleEngine(cfg4).Evaluate(Wed(8, 50));
         Check("课间解锁策略开启 → 课间保持解锁", !v15.ShouldLock, v15.Reason);
 
+        // ────────────────────────────────────────────────────────────
+        // GetCurrentPeriod：第三层确认的触发条件
+        // 判的是"时间上是否在上课"，而不是"当前是否该锁"
+        //
+        // 注意：必须用**全新配置**，不能复用上面被加过日期覆盖的 cfg——
+        // 否则那天已被标成放假，测出来全是 null（这个坑踩过一次）。
+        // ────────────────────────────────────────────────────────────
+        Console.WriteLine();
+        Console.WriteLine("=== GetCurrentPeriod（「上课时段内下课」第三层确认的触发条件）===");
+
+        var cfgClean = AppConfig.CreateDefault();
+        cfgClean.Weekly[wed].Enabled = true;
+        var c1 = new ScheduleEngine(cfgClean);
+
+        string? PeriodAt(int h, int m, int s = 0) => c1.GetCurrentPeriod(Wed(h, m, s))?.Name;
+
+        Check("08:10 第1节中 → 判定为上课时段", PeriodAt(8, 10) == "第1节", PeriodAt(8, 10) ?? "null");
+        Check("08:50 课间 → 不是上课时段", PeriodAt(8, 50) is null);
+        Check("08:53:30 课前提前窗口内 → 不是上课时段（不该触发第三层）", PeriodAt(8, 53, 30) is null);
+        Check("08:45:03 下课缓冲期内 → 不是上课时段", PeriodAt(8, 45, 3) is null);
+        Check("12:00 午休时段内 → 算上课时段（与 LockDuring 无关）",
+            PeriodAt(12, 0) == "午休", PeriodAt(12, 0) ?? "null");
+        Check("07:00 首节之前 → 不是上课时段", PeriodAt(7, 0) is null);
+        Check("22:00 全部结束 → 不是上课时段", PeriodAt(22, 0) is null);
+        Check("08:00:00 第1节起始瞬间 → 算上课（左闭）", PeriodAt(8, 0) == "第1节", PeriodAt(8, 0) ?? "null");
+        Check("08:44:59 第1节结束前一秒 → 算上课", PeriodAt(8, 44, 59) == "第1节", PeriodAt(8, 44, 59) ?? "null");
+        Check("08:45:00 第1节结束瞬间 → 不算上课（右开）", PeriodAt(8, 45) is null, PeriodAt(8, 45) ?? "null");
+        Check("IsDuringClass 与 GetCurrentPeriod 一致",
+            c1.IsDuringClass(Wed(8, 10)) && !c1.IsDuringClass(Wed(8, 50)));
+
+        // 总开关关闭时不算上课时间
+        var cfgOff = AppConfig.CreateDefault();
+        cfgOff.Enabled = false;
+        cfgOff.Weekly[wed].Enabled = true;
+        Check("总开关关闭 → 即使课中也不算上课时段",
+            new ScheduleEngine(cfgOff).GetCurrentPeriod(Wed(8, 10)) is null);
+
+        // 休息日不算
+        Check("周日 → 不算上课时段", c1.GetCurrentPeriod(new DateTime(2025, 9, 28, 8, 10, 0)) is null);
+
+        // 全天放假的覆盖日不算
+        var cfgHoliday = AppConfig.CreateDefault();
+        cfgHoliday.Weekly[wed].Enabled = true;
+        cfgHoliday.Overrides.Add(new DateOverride { Date = "2025-09-24", Locked = false, Note = "运动会" });
+        Check("覆盖为放假的当天 → 不算上课时段",
+            new ScheduleEngine(cfgHoliday).GetCurrentPeriod(Wed(8, 10)) is null);
+
+        // 调休：周日被强制设为上课日 → 按作息表判
+        var cfgMakeup = AppConfig.CreateDefault();
+        cfgMakeup.Weekly[wed].Enabled = true;
+        cfgMakeup.Overrides.Add(new DateOverride { Date = "2025-09-28", Locked = true, Note = "调休上课" });
+        var c4 = new ScheduleEngine(cfgMakeup);
+        Check("调休日（周日强制上锁）→ 该星期无作息则不判为上课",
+            c4.GetCurrentPeriod(new DateTime(2025, 9, 28, 8, 10, 0)) is null);
+
         return failures;
     }
 }

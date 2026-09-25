@@ -170,4 +170,39 @@ public sealed class ScheduleEngine
         if (!day.Enabled) return Array.Empty<ClassPeriod>();
         return day.Periods.OrderBy(p => p.StartTime).ToList();
     }
+
+    /// <summary>
+    /// 现在是否**正处于某个上课时段内**（不管该时段是否设置了锁屏）。
+    ///
+    /// 用途：「下课」按钮的第三层确认 —— 老师在上课时间点下课是反常操作，
+    /// 需要额外确认一次。所以这里判的是"时间上是否在上课"，而不是"当前是否该锁"。
+    ///
+    /// 与 Evaluate() 的区别：Evaluate 会被总开关、日期覆盖、课前窗口等影响，
+    /// 这里只看作息表本身的时段归属。
+    /// </summary>
+    public ClassPeriod? GetCurrentPeriod(DateTime now)
+    {
+        // 总开关关闭 / 休息日 / 全天放假的覆盖日，都不算"上课时间"
+        if (!_cfg.Enabled) return null;
+
+        var today = DateOnly.FromDateTime(now);
+        var ov = _cfg.Overrides.FirstOrDefault(o => o.DateValue == today);
+        if (ov is not null && !ov.Locked) return null;
+
+        var dayIndex = (int)now.DayOfWeek;
+        if (dayIndex < 0 || dayIndex >= _cfg.Weekly.Count) return null;
+
+        var day = _cfg.Weekly[dayIndex];
+        // 强制上锁日（调休）即使该星期原本未启用，也按作息表判
+        if (!day.Enabled && !(ov is not null && ov.Locked)) return null;
+
+        var t = now.TimeOfDay;
+        return day.Periods
+            .Where(p => p.EndTime > p.StartTime)
+            .OrderBy(p => p.StartTime)
+            .FirstOrDefault(p => t >= p.StartTime && t < p.EndTime);
+    }
+
+    /// <summary>现在是否处于上课时段内。</summary>
+    public bool IsDuringClass(DateTime now) => GetCurrentPeriod(now) is not null;
 }

@@ -3,7 +3,7 @@
 import os
 from PIL import Image
 
-P = r"C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\preview"
+P = r"$PSScriptRoot\..\preview"
 
 girl = Image.open(os.path.join(P, "dsh_icon_source.png")).convert("RGBA").resize((256, 256), Image.LANCZOS)
 whale = Image.open(os.path.join(P, "dsh_exe_icon.png")).convert("RGBA").resize((256, 256), Image.LANCZOS)

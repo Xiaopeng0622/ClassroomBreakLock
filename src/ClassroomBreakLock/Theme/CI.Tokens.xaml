@@ -73,6 +73,17 @@
         <GradientStop Color="#2E90D9" Offset="1"/>
     </LinearGradientBrush>
 
+    <!--
+        ===== 粉色渐变（锁屏左上角「课间锁定」芯片专用） =====
+        单独开一个令牌而不是改 AccentGradient——后者被悬浮按钮、主按钮等多处共用，
+        直接改会波及全站配色。
+        色相沿用天依蓝的明度节奏，换成樱粉一系，在深色锁屏底上对比度足够。
+    -->
+    <LinearGradientBrush x:Key="AccentGradientPink" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF9EC4" Offset="0"/>
+        <GradientStop Color="#E8517F" Offset="1"/>
+    </LinearGradientBrush>
+
     <!-- ===== 锁屏页背景（ClassIsland 深色 + 天依蓝光晕） ===== -->
     <LinearGradientBrush x:Key="LockBackdrop" StartPoint="0.5,0" EndPoint="0.5,1">
         <GradientStop Color="#141A26" Offset="0"/>

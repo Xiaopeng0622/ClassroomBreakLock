@@ -1,4 +1,4 @@
-$proj = 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\src\ClassroomBreakLock\ClassroomBreakLock.csproj'
+$proj = '$PSScriptRoot\..\src\ClassroomBreakLock\ClassroomBreakLock.csproj'
 
 foreach ($cfg in @('Debug', 'Release')) {
     Write-Output "===== build $cfg ====="
@@ -11,11 +11,11 @@ foreach ($cfg in @('Debug', 'Release')) {
 
 Write-Output ''
 Write-Output '===== 产物时间戳 ====='
-Get-ChildItem 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\src\ClassroomBreakLock\bin\*\net8.0-windows\ClassroomBreakLock.exe' |
+Get-ChildItem '$PSScriptRoot\..\src\ClassroomBreakLock\bin\*\net8.0-windows\ClassroomBreakLock.exe' |
     Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize | Out-String -Width 160
 
 Write-Output '===== 残留系统弹窗 / 提示音 ====='
-$root = 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\src\ClassroomBreakLock'
+$root = '$PSScriptRoot\..\src\ClassroomBreakLock'
 Get-ChildItem $root -Recurse -File -Include *.cs,*.xaml |
     Where-Object { $_.FullName -notmatch '\\obj\\' } |
     Select-String -Pattern 'MessageBox\.Show|SystemSounds|MessageBeep|SoundPlayer' |

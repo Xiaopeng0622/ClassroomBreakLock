@@ -16,6 +16,7 @@ internal static class NativeMethods
 
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_NOOWNERZORDER = 0x0200;
@@ -71,6 +72,13 @@ internal static class NativeMethods
     public const int VK_MENU = 0x12;   // Alt
     public const int VK_SHIFT = 0x10;
     public const int VK_DELETE = 0x2E;
+    public const int VK_LBUTTON = 0x01;
+
+    /// <summary>某个虚拟键当前是否按下（用于拖动轮询，绕开 WPF 的鼠标捕获）。</summary>
+    public static bool IsKeyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    /// <summary>鼠标左键当前是否按下。</summary>
+    public static bool IsLeftButtonDown() => IsKeyDown(VK_LBUTTON);
 
     public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -112,6 +120,19 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    /// <summary>取窗口的物理像素矩形。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
     [DllImport("user32.dll")]
     public static extern bool ClipCursor(IntPtr lpRect);
 
@@ -131,6 +152,48 @@ internal static class NativeMethods
     public const uint EWX_REBOOT = 0x00000002;
     public const uint EWX_FORCE = 0x00000004;
 
+    // ---------------- 窗口可见性 / 虚拟桌面 ----------------
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    public const int SW_SHOWNOACTIVATE = 4;
+    public const int SW_SHOW = 5;
+
+    /// <summary>
+    /// 查询窗口是否被 DWM 遮蔽（"cloaked"）。
+    ///
+    /// 切换虚拟桌面后，不在当前桌面上的窗口会被 DWM 标记为 cloaked：
+    /// 此时 IsWindowVisible() 仍返回 true，但窗口实际不可见。
+    /// 只靠 WPF 的 Visibility 判断不出这种情况，所以必须查这个属性。
+    ///
+    /// 另外，应用挂起时也会被 cloaked，所以调用方要结合自身状态判断。
+    /// </summary>
+    public static bool IsWindowCloaked(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            // DWMWA_CLOAKED = 14
+            var result = DwmGetWindowAttribute(hwnd, 14, out var cloaked, sizeof(int));
+            return result == 0 && cloaked != 0;
+        }
+        catch
+        {
+            // dwmapi 不可用（极老系统）时按"未遮蔽"处理
+            return false;
+        }
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+
     // ---------------- 单实例互斥 ----------------
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -148,6 +211,52 @@ internal static class NativeMethods
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
     }
+
+    /// <summary>
+    /// 直接把窗口移到指定的**物理像素**位置，同时设置尺寸。
+    ///
+    /// 为什么不用 WPF 的 Window.Left/Top：
+    ///   混合 DPI 多屏下，WPF 的 Left/Top 属于"逻辑坐标"，
+    ///   它在跨屏时的换算规则复杂且受窗口当前所在屏的 DPI 影响，
+    ///   实测会出现"代码算对了，窗口却落在别处"的情况。
+    ///   直接用 SetWindowPos 给物理坐标最可靠，所见即所得。
+    /// </summary>
+    public static bool MoveToPhysical(IntPtr hwnd, int x, int y, int width, int height)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        return SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+    }
+
+    /// <summary>
+    /// 只移动、不改尺寸（带 SWP_NOSIZE）。
+    ///
+    /// 拖动时每帧都调这个：省略尺寸参数可以避免窗口重排，
+    /// 明显比连尺寸一起设更流畅。
+    /// </summary>
+    public static bool MoveOnlyPhysical(IntPtr hwnd, int x, int y)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        return SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
+            SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_NOSENDCHANGING);
+    }
+
+    // ============================================================
+    //  【已废弃】原生模态拖动 —— 保留此说明避免以后有人再走这条路
+    //
+    //  曾用 SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) 让系统接管窗口拖动，
+    //  想借此获得"硬件搬移"的顺滑。实测结果相反：
+    //
+    //    · 系统移动循环会跑一个**嵌套消息泵**，与 WPF 的 Dispatcher 抢消息，
+    //      表现为拖动一顿一顿、甚至要使劲拖才动；
+    //    · 而且它会吞掉鼠标抬起，导致 Button 的 Click 不触发
+    //      （"单击无法锁定下课"就是这么来的）。
+    //
+    //  现在改用自绘轮询（见 FloatingButtonWindow.StartDragPolling）：
+    //  用 DispatcherTimer 每 16ms 读光标 → SetWindowPos，不阻塞消息泵。
+    //
+    //  结论：**不要**再用 WM_NCLBUTTONDOWN / HTCAPTION 拖这个窗口。
+    // ============================================================
 
     /// <summary>判断当前前台窗口是不是我们自己。</summary>
     public static bool IsForeground(IntPtr hwnd) => GetForegroundWindow() == hwnd;

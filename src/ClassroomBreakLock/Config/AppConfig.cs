@@ -51,6 +51,57 @@ public sealed class FloatingButtonConfig
     /// <summary>鼠标静止多少秒后自动淡出（0 = 不淡出）。</summary>
     public int FadeAfterIdleSeconds { get; set; } = 8;
 
+    /// <summary>淡出后保留的不透明度比例（0.1~1.0，相对 Opacity）。</summary>
+    public double FadeToRatio { get; set; } = 0.35;
+
+    // ---------------- 多显示器 ----------------
+
+    /// <summary>
+    /// 目标显示器：-1 = 自动（记住上次所在屏），>=0 = 强制指定第 N 块屏。
+    /// 屏幕序号按 Windows 显示设置的顺序（0 为主屏，向下排列）。
+    /// </summary>
+    public int TargetScreenIndex { get; set; } = -1;
+
+    /// <summary>上次所在显示器的设备名（自动模式下用于恢复位置）。</summary>
+    public string LastScreenDeviceName { get; set; } = "";
+
+    /// <summary>用户是否把按钮拖到过自定义位置（而非默认右下角/吸附位）。</summary>
+    public bool HasFreePosition { get; set; }
+
+    /// <summary>自由摆放时的横坐标（相对目标屏工作区左上角）。</summary>
+    public int FreeX { get; set; }
+
+    /// <summary>自由摆放时的纵坐标（相对目标屏工作区左上角）。</summary>
+    public int FreeY { get; set; }
+
+    /// <summary>屏幕被拔掉/变更时是否回落到主屏（false 则可能定位失败）。</summary>
+    public bool FallbackToPrimary { get; set; } = true;
+
+    // ---------------- 靠边吸附 ----------------
+
+    /// <summary>是否启用靠边吸附。</summary>
+    public bool SnapToEdge { get; set; } = true;
+
+    /// <summary>吸附触发距离（像素）：拖到距屏幕边缘这么近就吸附。</summary>
+    public int SnapThreshold { get; set; } = 24;
+
+    /// <summary>吸附后是否自动缩成小图标。</summary>
+    public bool CollapseWhenSnapped { get; set; } = true;
+
+    /// <summary>缩起后的直径（像素）。</summary>
+    public int CollapsedSize { get; set; } = 28;
+
+    /// <summary>吸附到哪一边：left / right。</summary>
+    public string SnappedEdge { get; set; } = "";
+
+    /// <summary>当前是否处于缩起状态（持久化，重启后保持）。</summary>
+    public bool IsCollapsed { get; set; }
+
+    /// <summary>悬停展开的延迟毫秒数（0 = 立刻展开）。</summary>
+    public int ExpandDelayMs { get; set; } = 120;
+
+    public bool IsSnapped => !string.IsNullOrEmpty(SnappedEdge);
+
     public FloatingButtonConfig Clone() => (FloatingButtonConfig)MemberwiseClone();
 }
 
@@ -75,6 +126,42 @@ public sealed class SyncConfig
     public SyncConfig Clone() => (SyncConfig)MemberwiseClone();
 }
 
+/// <summary>
+/// 锁屏界面的个性化外观。
+///
+/// 设计取舍：背景图会被**复制到程序数据目录**（assets 子目录），
+/// 而不是只记一个路径——原图被删/被移动后锁屏不该变成一片黑。
+/// </summary>
+public sealed class AppearanceConfig
+{
+    /// <summary>是否启用自定义背景图。关掉就用内置的深色渐变。</summary>
+    public bool UseBackgroundImage { get; set; }
+
+    /// <summary>背景图文件名（相对程序数据目录的 assets 文件夹，只存文件名不存全路径）。</summary>
+    public string BackgroundImageFile { get; set; } = "";
+
+    /// <summary>
+    /// 遮罩暗度 0.0~0.9。
+    /// 在背景图上盖一层半透明黑，保证浅色图片上白字依然可读。0 = 不遮。
+    /// </summary>
+    public double OverlayOpacity { get; set; } = 0.45;
+
+    /// <summary>背景模糊半径 0~60（像素）。0 = 不模糊。</summary>
+    public double BlurRadius { get; set; } = 0;
+
+    /// <summary>背景整体不透明度 0.1~1.0。调低可让内置深色底透出来。</summary>
+    public double BackgroundOpacity { get; set; } = 1.0;
+
+    /// <summary>图片填充方式：uniform（适应）/ uniformToFill（填充）/ fill（拉伸）。</summary>
+    public string Stretch { get; set; } = "uniformToFill";
+
+    public AppearanceConfig Clone() => (AppearanceConfig)MemberwiseClone();
+
+    /// <summary>是否已有可用的背景图文件。</summary>
+    public bool HasImage => UseBackgroundImage &&
+                            !string.IsNullOrWhiteSpace(BackgroundImageFile);
+}
+
 /// <summary>提醒与提示音。</summary>
 public sealed class AlertConfig
 {
@@ -97,6 +184,12 @@ public sealed class AlertConfig
 public sealed class LoggingConfig
 {
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 输出 Debug 级详细日志（含悬浮按钮定位细节）。
+    /// 排查"按钮位置不对/拖动异常"时打开，平时关掉避免日志膨胀。
+    /// </summary>
+    public bool DebugVerbose { get; set; }
 
     /// <summary>日志目录；留空则用 %ProgramData%\ClassroomBreakLock\logs。</summary>
     public string Directory { get; set; } = "";
@@ -139,6 +232,7 @@ public sealed class AppConfig
     public SecurityConfig Security { get; set; } = new();
     public FloatingButtonConfig FloatingButton { get; set; } = new();
     public AlertConfig Alerts { get; set; } = new();
+    public AppearanceConfig Appearance { get; set; } = new();
     public LoggingConfig Logging { get; set; } = new();
     public AuthConfig Auth { get; set; } = new();
 
@@ -192,6 +286,7 @@ public sealed class AppConfig
         c.Security = Security.Clone();
         c.FloatingButton = FloatingButton.Clone();
         c.Alerts = Alerts.Clone();
+        c.Appearance = Appearance.Clone();
         c.Logging = Logging.Clone();
         c.Auth = Auth.Clone();
         c.Sync = Sync.Clone();

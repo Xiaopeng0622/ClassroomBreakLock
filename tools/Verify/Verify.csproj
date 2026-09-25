@@ -8,11 +8,14 @@
     <AssemblyName>BreakLockVerify</AssemblyName>
     <RootNamespace>BreakLockVerify</RootNamespace>
     <StartupObject>BreakLockVerify.EntryPoint</StartupObject>
+    <!-- 悬浮按钮的几何校验用到 Rect/Point，所以需要 WPF 引用 -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <!--
     直接引用主程序的源码而非复制，保证验证的就是实际运行的那份逻辑。
-    只取纯逻辑文件（不含 WPF 依赖），所以这个测试项目不需要 WPF。
+    只取不依赖 WPF 窗口/控件的那部分（几何计算、调度、密码学）——
+    MonitorService 只用到 Rect/Point，属于 System.Windows 基础类型，可以测。
   -->
   <ItemGroup>
     <Compile Include="..\..\src\ClassroomBreakLock\Auth\Totp.cs" Link="src\Totp.cs" />
@@ -20,7 +23,16 @@
     <Compile Include="..\..\src\ClassroomBreakLock\Config\AppConfig.cs" Link="src\AppConfig.cs" />
     <Compile Include="..\..\src\ClassroomBreakLock\Config\Schedule.cs" Link="src\Schedule.cs" />
     <Compile Include="..\..\src\ClassroomBreakLock\Config\AuthConfig.cs" Link="src\AuthConfig.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\ConfigStore.cs" Link="src\ConfigStore.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\ScheduleImporter.cs" Link="src\ScheduleImporter.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\DailyQuote.cs" Link="src\DailyQuote.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\AppearanceAssets.cs" Link="src\AppearanceAssets.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Auth\AuthService.cs" Link="src\AuthService.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Auth\UsbAuthService.cs" Link="src\UsbAuthService.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Logging\Log.cs" Link="src\Log.cs" />
     <Compile Include="..\..\src\ClassroomBreakLock\Scheduling\ScheduleEngine.cs" Link="src\ScheduleEngine.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Interop\MonitorService.cs" Link="src\MonitorService.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Interop\NativeMethods.cs" Link="src\NativeMethods.cs" />
   </ItemGroup>
 
 </Project>

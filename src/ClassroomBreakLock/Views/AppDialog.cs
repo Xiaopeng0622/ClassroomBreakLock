@@ -76,6 +76,12 @@ public static class AppDialog
         => BuildCore(null, title, message, danger ? DialogKind.Warn : DialogKind.Info, confirm,
             confirm ? "确定" : "好的", "取消", danger, null);
 
+    /// <summary>仅供离线预览使用：可自定义按钮文案。</summary>
+    public static Window BuildPreview(string title, string message, bool confirm, bool danger,
+        string okText, string cancelText)
+        => BuildCore(null, title, message, danger ? DialogKind.Warn : DialogKind.Info, confirm,
+            okText, cancelText, danger, null);
+
     private static Window BuildCore(
         Window? owner,
         string title,

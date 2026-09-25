@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using ClassroomBreakLock.Logging;
 
 namespace ClassroomBreakLock.Config;
 
@@ -78,6 +79,36 @@ public static class ScheduleImporter
         => LooksLikeYaml(text)
             ? ParseYaml(text, "粘贴内容")
             : ParseRows(ReadDelimited(text), "粘贴内容");
+
+    /// <summary>
+    /// 把任意支持的文件转成**纯文本**，用于交给 AI 兜底识别。
+    /// Excel 会逐行展开成制表符分隔的文本，其余格式直接读原文。
+    /// </summary>
+    public static string ExtractRawText(string path)
+    {
+        string lower = path.ToLowerInvariant();
+
+        try
+        {
+            if (lower.EndsWith(".xlsx") || lower.EndsWith(".xlsm"))
+            {
+                var rows = ReadXlsxRows(path);
+                var sb = new StringBuilder();
+                foreach (var row in rows)
+                {
+                    sb.AppendLine(string.Join("\t", row));
+                }
+                return sb.ToString();
+            }
+
+            return File.ReadAllText(path, DetectEncoding(path));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"提取课表原文失败：{ex.Message}");
+            return "";
+        }
+    }
 
     private static bool LooksLikeYaml(string text)
         => text.Contains("schedules:", StringComparison.OrdinalIgnoreCase)

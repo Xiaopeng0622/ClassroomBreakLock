@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ClassroomBreakLock.Auth;
 using ClassroomBreakLock.Config;
@@ -97,6 +98,11 @@ public partial class LockWindow : Window
         TitleText.Text = _cfg.Alerts.LockTitle;
         SubtitleText.Text = _cfg.Alerts.LockSubtitle;
 
+        // 每日一言：同一天内恒定，换天才换
+        DailyQuoteText.Text = DailyQuote.ForDisplay();
+
+        ApplyAppearance();
+
         var (usb, pwd, totp, emg) = _auth.AvailableMethods();
 
         _tabUsb.Visibility = usb ? Visibility.Visible : Visibility.Collapsed;
@@ -142,6 +148,79 @@ public partial class LockWindow : Window
         else
         {
             FooterText.Text = "今日无课次安排";
+        }
+    }
+
+    /// <summary>
+    /// 应用个性化外观：背景图、模糊、遮罩、不透明度。
+    ///
+    /// 任何一项加载失败都必须安静回退到内置深色背景——
+    /// 锁屏是全屏压盖的界面，绝不能因为一张图坏了就白屏或抛异常。
+    /// </summary>
+    public void ApplyAppearance()
+    {
+        try
+        {
+            var ap = _cfg.Appearance;
+
+            var path = AppearanceAssets.ResolveImagePath(ap);
+            if (path is null)
+            {
+                // 没有可用图片：隐藏图片层，遮罩也归零
+                BackgroundImage.Visibility = Visibility.Collapsed;
+                BackgroundImage.Source = null;
+                BackgroundOverlay.Opacity = 0;
+                return;
+            }
+
+            // 用 OnLoad + 立即关闭流，避免文件被进程长期占用
+            // （否则用户想换图时删不掉旧文件）
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            bmp.UriSource = new Uri(path, UriKind.Absolute);
+            bmp.EndInit();
+            bmp.Freeze();
+
+            BackgroundImage.Source = bmp;
+            BackgroundImage.Opacity = ap.BackgroundOpacity;
+            BackgroundImage.Stretch = ap.Stretch switch
+            {
+                "uniform" => Stretch.Uniform,
+                "fill" => Stretch.Fill,
+                _ => Stretch.UniformToFill
+            };
+
+            // 模糊：半径为 0 时把 Effect 摘掉，避免白白走一遍模糊管线
+            if (ap.BlurRadius > 0.5)
+            {
+                BackgroundBlur.Radius = ap.BlurRadius;
+                BackgroundImage.Effect = BackgroundBlur;
+            }
+            else
+            {
+                BackgroundImage.Effect = null;
+            }
+
+            BackgroundOverlay.Opacity = ap.OverlayOpacity;
+            BackgroundImage.Visibility = Visibility.Visible;
+
+            Log.Info($"锁屏背景已应用：{ap.BackgroundImageFile} " +
+                     $"模糊={ap.BlurRadius:0} 遮罩={ap.OverlayOpacity:0.00} " +
+                     $"不透明度={ap.BackgroundOpacity:0.00} 填充={ap.Stretch}");
+        }
+        catch (Exception ex)
+        {
+            // 背景图出问题不影响解锁：静默回退
+            Log.Warn($"应用锁屏背景失败，回退内置背景：{ex.Message}");
+            try
+            {
+                BackgroundImage.Visibility = Visibility.Collapsed;
+                BackgroundImage.Source = null;
+                BackgroundOverlay.Opacity = 0;
+            }
+            catch { }
         }
     }
 
