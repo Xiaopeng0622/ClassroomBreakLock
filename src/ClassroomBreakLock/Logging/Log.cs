@@ -38,6 +38,18 @@ public static class Log
     public static void Warn(string msg) => Write(LogLevel.Warn, msg);
     public static void Error(string msg) => Write(LogLevel.Error, msg);
 
+    /// <summary>
+    /// Debug 级别当前是否会被输出。
+    /// 用于在调用处提前判断，避免拼装那些高频但默认不写的诊断字符串。
+    /// </summary>
+    public static bool IsDebugEnabled => _enabled && _debugEnabled;
+
+    /// <summary>是否输出 Debug 级日志。默认关闭，排查定位问题时可在配置里打开。</summary>
+    private static bool _debugEnabled;
+
+    /// <summary>设置是否输出 Debug 级日志。</summary>
+    public static void SetDebugEnabled(bool on) => _debugEnabled = on;
+
     /// <summary>专门记认证事件，方便事后审计。</summary>
     public static void Audit(string method, bool success, string detail = "")
     {

@@ -61,10 +61,55 @@ internal static class Program
                 AuthService auth = new AuthService(cfg);
 
                 Render(new LockWindow(cfg, auth), 1600, 900, Path.Combine(outDir, "lock.png"));
+
+                // 若本机配置里设了自定义背景图，额外渲染一张带背景的锁屏，用于验收外观效果
+                try
+                {
+                    var realCfg = ClassroomBreakLock.Config.ConfigStore.Load();
+                    if (realCfg.Appearance.HasImage)
+                    {
+                        Render(new LockWindow(realCfg, new AuthService(realCfg)), 1600, 900,
+                            Path.Combine(outDir, "lock-custom-bg.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("custom bg preview skipped: " + ex.Message);
+                }
+
                 Render(new SettingsWindow(cfg, auth), 1240, 880, Path.Combine(outDir, "settings.png"), 0);
                 Render(new SettingsWindow(cfg, auth), 1240, 1080, Path.Combine(outDir, "settings-schedule.png"), 1);
                 Render(new SettingsWindow(cfg, auth), 1240, 880, Path.Combine(outDir, "settings-auth.png"), 2);
-                Render(new SettingsWindow(cfg, auth), 1240, 1000, Path.Combine(outDir, "settings-security.png"), 4);
+                // 个性化（锁屏背景）—— 插在认证之后，索引 3
+                Render(new SettingsWindow(cfg, auth), 1240, 1000, Path.Combine(outDir, "settings-appearance.png"), 3);
+                // 悬浮按钮页：多屏选择 / 透明度 / 靠边吸附（索引已因新增页而后移）
+                Render(new SettingsWindow(cfg, auth), 1240, 1180, Path.Combine(outDir, "settings-floating.png"), 4);
+                Render(new SettingsWindow(cfg, auth), 1240, 1000, Path.Combine(outDir, "settings-security.png"), 5);
+
+                // 悬浮按钮本体：展开态 vs 吸附缩起态（对比尺寸是否真的变了）
+                RenderFloating(cfg, collapsed: false, Path.Combine(outDir, "floating-expanded.png"));
+                RenderFloating(cfg, collapsed: true, Path.Combine(outDir, "floating-collapsed.png"));
+
+                // 设置认证门（新增）—— 验证弹窗风格是否与设置页一致
+                // 高度传 0 表示"按内容自适应"，避免固定高度把弹窗拉长留白
+                Render(SettingsAuthGate.BuildPreview(cfg, auth), 500, 0,
+                    Path.Combine(outDir, "gate-auth.png"));
+
+                // 「下课」第二层确认框
+                Render(AppDialog.BuildPreview(
+                        "确认要下课吗？",
+                        "锁屏后需要使用 U 盘、密码或动态码才能解锁。",
+                        confirm: true, danger: false, "下课锁屏", "取消"),
+                    500, 0, Path.Combine(outDir, "confirm-dismiss.png"));
+
+                // 「下课」第三层确认框（上课时段内触发，danger 样式）
+                Render(AppDialog.BuildPreview(
+                        "确认在上课时间下课吗？",
+                        "当前正处于「第1节」上课时段，这个时间下课属于反常操作。\n\n" +
+                        "确认后屏幕将立即锁定。如果只是误触，请选择「取消」。",
+                        confirm: true, danger: true, "确认下课", "取消"),
+                    500, 0, Path.Combine(outDir, "confirm-dismiss-inclass.png"));
+
                 Console.WriteLine("PREVIEW_OK");
             }
             catch (Exception ex)
@@ -80,8 +125,24 @@ internal static class Program
         app.Run();
     }
 
-    private static void Render(Window w, int width, int height, string path, int tabIndex = -1)
+    /// <summary>
+    /// 渲染悬浮按钮本体。collapsed=true 时模拟"已吸附缩起"状态，
+    /// 用来肉眼确认缩起后圆圈尺寸确实变小了（这个点曾经因为 XAML 绑定写错而失效）。
+    /// </summary>
+    private static void RenderFloating(AppConfig cfg, bool collapsed, string path)
     {
+        var c = cfg.Clone();
+        c.FloatingButton.SnappedEdge = collapsed ? "right" : "";
+        c.FloatingButton.IsCollapsed = collapsed;
+
+        var w = new FloatingButtonWindow(c);
+        // 窗口尺寸是 Auto，给它一块足够大的画布再裁到按钮区域
+        int size = collapsed ? 90 : 150;
+        Render(w, size, size, path);
+        w.StopTimer();
+    }
+
+    private static void Render(Window w, int width, int height, string path, int tabIndex = -1)    {
         w.WindowStartupLocation = WindowStartupLocation.Manual;
         w.Left = -8000;
         w.Top = -8000;
@@ -90,7 +151,13 @@ internal static class Program
         w.Topmost = false;
         w.WindowState = WindowState.Normal;
         w.Width = width;
-        w.Height = height;
+        // height <= 0 表示自适应：让窗口按内容定高，渲染器再取实际高度
+        bool autoHeight = height <= 0;
+        if (!autoHeight)
+        {
+            w.Height = height;
+            w.SizeToContent = SizeToContent.Manual;
+        }
         w.Show();
 
         Pump();
@@ -106,6 +173,12 @@ internal static class Program
             Pump();
             w.UpdateLayout();
             Pump();
+        }
+
+        if (autoHeight)
+        {
+            height = (int)Math.Ceiling(w.ActualHeight);
+            if (height <= 0) height = 400;
         }
 
         FrameworkElement root = (FrameworkElement)w.Content;

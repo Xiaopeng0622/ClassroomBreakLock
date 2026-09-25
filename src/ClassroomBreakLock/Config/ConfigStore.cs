@@ -88,6 +88,17 @@ public static class ConfigStore
     {
         cfg.Security ??= new SecurityConfig();        cfg.FloatingButton ??= new FloatingButtonConfig();
         cfg.Alerts ??= new AlertConfig();
+        cfg.Appearance ??= new AppearanceConfig();
+
+        // 外观参数夹到合法区间，防止手改配置文件写出越界值
+        cfg.Appearance.OverlayOpacity = Math.Clamp(cfg.Appearance.OverlayOpacity, 0.0, 0.9);
+        cfg.Appearance.BlurRadius = Math.Clamp(cfg.Appearance.BlurRadius, 0, 60);
+        cfg.Appearance.BackgroundOpacity = Math.Clamp(cfg.Appearance.BackgroundOpacity, 0.1, 1.0);
+        if (cfg.Appearance.Stretch is not ("uniform" or "uniformToFill" or "fill"))
+        {
+            cfg.Appearance.Stretch = "uniformToFill";
+        }
+
         cfg.Logging ??= new LoggingConfig();
         cfg.Auth ??= new AuthConfig();
         cfg.Auth.UsbKeys ??= new List<UsbKey>();

@@ -1,4 +1,4 @@
-$root = 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\src\ClassroomBreakLock'
+$root = '$PSScriptRoot\..\src\ClassroomBreakLock'
 Set-Location $root
 
 Write-Output '===== 1) remaining MessageBox / system dialogs ====='

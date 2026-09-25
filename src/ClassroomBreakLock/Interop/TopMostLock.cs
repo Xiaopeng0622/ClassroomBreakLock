@@ -119,6 +119,11 @@ internal sealed class TopMostLock : IDisposable
     {
         if (_disposed || _hwnd == IntPtr.Zero) return;
 
+        // 如果前台是**别人的 Topmost 窗口**（例如我们自己的认证弹窗），
+        // 就不要去抢：既不要重新置顶自己，也不要把前台抢回来。
+        // 否则会把弹窗压在下面，用户点不到、卡在锁屏界面。
+        if (IsForeignTopmostForeground()) return;
+
         NativeMethods.PinTopMost(_hwnd);
 
         // 悬浮按钮等“必须留在最上面”的窗口，要在锁屏层之后再钉一次
@@ -132,6 +137,35 @@ internal sealed class TopMostLock : IDisposable
         {
             NativeMethods.SetForegroundWindow(_hwnd);
             NativeMethods.PinTopMost(_hwnd);
+        }
+    }
+
+    /// <summary>
+    /// 前台是不是"与本进程无关的置顶窗口"（典型场景：我们弹的模态对话框）。
+    ///
+    /// 判定：前台窗口既不是锁屏窗口、也不在 _keepAbove 里，但带 WS_EX_TOPMOST。
+    /// 这种情况下应当让路，不去抢 Z 序。
+    /// </summary>
+    private bool IsForeignTopmostForeground()
+    {
+        try
+        {
+            var fg = NativeMethods.GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            if (fg == _hwnd) return false;
+
+            foreach (IntPtr hwnd in _keepAbove)
+            {
+                if (fg == hwnd) return false;
+            }
+
+            // 是置顶窗口就让路
+            var ex = NativeMethods.GetWindowLong(fg, NativeMethods.GWL_EXSTYLE);
+            return (ex & NativeMethods.WS_EX_TOPMOST) != 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 

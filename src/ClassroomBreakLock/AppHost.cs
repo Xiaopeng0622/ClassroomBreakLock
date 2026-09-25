@@ -24,9 +24,9 @@ namespace ClassroomBreakLock;
 /// </summary>
 public sealed class AppHost
 {
-    private AppConfig _cfg;
-    private ScheduleEngine _engine;
-    private AuthService _auth;
+    private AppConfig _cfg = null!;
+    private ScheduleEngine _engine = null!;
+    private AuthService _auth = null!;
     private TopMostLock? _lock;
     private LockWindow? _lockWindow;
     private FloatingButtonWindow? _floatWindow;
@@ -40,9 +40,6 @@ public sealed class AppHost
 
     /// <summary>ClassIsland 状态同步接收端（本地 HTTP）。</summary>
     private ClassIslandBridge? _bridge;
-
-    /// <summary>测试模式下为 true：调度不自动上锁，只能手动触发。</summary>
-    private bool _forceUnlockedByTestMode;   // 保留字段以免遗漏引用
 
     /// <summary>看门狗进程（子进程守护）。</summary>
     private Process? _watchdog;
@@ -66,6 +63,7 @@ public sealed class AppHost
 
         _cfg = ConfigStore.Load();
         Log.Configure(_cfg.Logging.Directory, _cfg.Logging.RetentionDays, _cfg.Logging.Enabled);
+        Log.SetDebugEnabled(_cfg.Logging.DebugVerbose);
         Log.Cleanup();
         Log.Info($"===== 课间锁启动 v0.1.0 教室={_cfg.ClassroomName} " +
                  $"管理员={IsAdministrator()} 配置={_cfg.ConfigPath} =====");
@@ -80,6 +78,10 @@ public sealed class AppHost
         _floatWindow = new FloatingButtonWindow(_cfg);
         _floatWindow.ClassDismissed += OnClassDismissed;
         _floatWindow.SettingsRequested += () => OpenSettingsRequireAuth();
+        // 位置/缩起状态变化就落盘，重启后才能回到老师放的那块屏
+        _floatWindow.LayoutChanged += OnFloatLayoutChanged;
+        // 第三层确认的判定源：现在是否正处于上课时段
+        _floatWindow.DuringClassProbe = () => _engine?.GetCurrentPeriod(DateTime.Now)?.Name;
         _floatWindow.Show();
         _floatWindow.ApplyConfig(_cfg);
 
@@ -104,9 +106,23 @@ public sealed class AppHost
             ? "测试模式（不自动上锁，可用托盘/热键手动触发锁屏）"
             : "正式模式（按作息表自动调度）";
         Log.Info($"初始化完成，开始调度｜{mode}");
+
+        // 启动自检：零认证方式时给出明确预警（后续所有上锁都会被拦截）
+        if (!HasAnyAuthMethod())
+        {
+            Log.Warn("自检：尚未配置任何认证方式 —— 在配置完成前，所有上锁操作都会被阻止");
+            _floatWindow?.ShowBubble("未配置认证方式，锁屏已暂停\n请先到设置里配置一种", 8);
+        }
+        else
+        {
+            Log.Info("自检：认证方式已就绪，锁屏功能正常");
+        }
+
         WarmUpSettingsWindow();
         if (_cfg.TestMode)
-            _floatWindow.ShowBubble("测试模式：不会自动锁屏\n双击图标可进设置", 10);
+        {
+            _floatWindow?.ShowBubble("测试模式：不会自动锁屏\n双击图标可进设置", 10);
+        }
     }
 
     // ---------------- ClassIsland 状态同步 ----------------
@@ -181,7 +197,7 @@ public sealed class AppHost
                         EngageLock(new ScheduleVerdict(
                             LockDecision.Lock,
                             $"ClassIsland：上课{(string.IsNullOrWhiteSpace(evt.Subject) ? "" : "（" + evt.Subject + "）")}",
-                            null, null, null, null));
+                            null, null, null, null), "ClassIsland");
                     }
                 }
                 else
@@ -360,6 +376,20 @@ public sealed class AppHost
                 return IntPtr.Zero;
             }
 
+            // 热键同样要过认证门——否则它就成了绕过设置保护的万能钥匙。
+            // 测试模式下例外：那时本来就是调试用的，且锁屏不会自动触发。
+            if (!_cfg.TestMode)
+            {
+                var hotkeyOwner = _floatWindow is { IsVisible: true } ? _floatWindow : null;
+                if (!SettingsAuthGate.Require(hotkeyOwner, _cfg, _auth,
+                        "紧急热键会解除课间锁定，请先验证身份"))
+                {
+                    Log.Audit("紧急热键", false, "认证未通过，未解锁");
+                    return IntPtr.Zero;
+                }
+            }
+
+            Log.Audit("紧急热键", true, "认证通过，解除锁定");
             ReleaseLock("管理员使用紧急热键");
             AppDialog.Info(null, "已解除锁定。", "紧急解锁");
         }
@@ -381,16 +411,25 @@ public sealed class AppHost
     {
         if (_locked) return;
         _manualUnlockUntil = null;
-        EngageLock(_engine.Evaluate(DateTime.Now));
+        EngageLock(_engine.Evaluate(DateTime.Now), "托盘立即锁定");
     }
 
     private void ForceUnlockWithConfirm()
     {
         if (!_locked) return;
         if (!AppDialog.Confirm(null,
-                "确定要强制解除锁定吗？此操作会记入日志。",
-                "强制解锁", "解锁", "取消", danger: true))
+                "确定要强制解除锁定吗？\n\n此操作需要验证身份，并会记入日志。",
+                "强制解锁", "继续", "取消", danger: true))
         {
+            return;
+        }
+
+        // 托盘菜单不是后门：强制解锁同样要过认证门
+        var trayOwner = _floatWindow is { IsVisible: true } ? _floatWindow : null;
+        if (!SettingsAuthGate.Require(trayOwner, _cfg, _auth,
+                "强制解除锁定会立即开放多媒体使用，请先验证身份"))
+        {
+            Log.Audit("托盘强制解锁", false, "认证未通过，未解锁");
             return;
         }
 
@@ -462,14 +501,23 @@ public sealed class AppHost
 
         if (_locked)
         {
-            // 装了「允许点击悬浮下课按钮直接解锁」时，锁屏期间必须保留按钮（第二解锁入口）。
-            // 之前这里无条件隐藏，而每秒 tick 都会重跑一次，
-            // 所以双击永远来不及——看得到按钮也点不动。
-            _floatWindow.SetSuppressed(!_cfg.Auth.AllowButtonUnlockWithoutAuth);
+            // “下课”按钮现在是**上锁**入口，锁屏期间必须隐藏——
+            // 否则它会浮在锁屏层上，变成一个多余的干扰元素。
+            _floatWindow.SetSuppressed(true);
             return;
         }
 
         _floatWindow.SetSuppressed(false);
+
+        // 虚拟桌面切换会让窗口被 DWM 遮蔽（Visibility 仍是 Visible 但看不见），
+        // 系统不会自动把它带回新桌面，所以每次 tick 都确认一下。
+        //
+        // 例外：用户正在拖动时跳过。拖动期间 UI 线程要留给窗口移动，
+        // 而 IsWindowCloaked 是一次跨进程 DWM 调用，会让拖动顿挫。
+        if (!_floatWindow.IsDragging)
+        {
+            _floatWindow.EnsureVisibleIfNeeded();
+        }
 
         // 副标题显示距离下一节课还有多久
         if (verdict.NextPeriod is not null)
@@ -487,12 +535,119 @@ public sealed class AppHost
 
     // ---------------- 锁定 / 解锁 ----------------
 
-    private void EngageLock(ScheduleVerdict verdict)
+    /// <summary>
+    /// 自检：当前是否配置了至少一种可用的认证方式。
+    /// 只要有一种能解开锁屏，允许锁屏就是安全的。
+    /// </summary>
+    private bool HasAnyAuthMethod()
+    {
+        try
+        {
+            var (usb, pwd, totp, emergency) = _auth.AvailableMethods();
+            return usb || pwd || totp || emergency;
+        }
+        catch (Exception ex)
+        {
+            // 判定失败时按"不安全"处理 —— 宁可锁不上，也不要把人锁在外面
+            Log.Error($"认证方式自检异常，按未配置处理：{ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>已经就"无认证方式"提醒过几次（用于节流，别每秒弹一次）。</summary>
+    private DateTime? _lastNoAuthWarnAt;
+
+    /// <summary>用户已经选择过"暂不配置"，在配置变化前不再重复弹窗。</summary>
+    private bool _noAuthWarnDismissed;
+
+    /// <summary>
+    /// 零认证方式时拦截上锁，并提示去配置。
+    ///
+    /// 节流策略：调度每秒都会调用 EngageLock，**日志和弹窗都必须节流**，
+    /// 否则上课 45 分钟会刷出几千条重复日志。
+    /// 用户主动的操作（托盘/下课按钮）每次都明确告知；
+    /// 自动调度只在第一次、以及之后每次间隔超过阈值时记录。
+    /// </summary>
+    private void WarnNoAuthBlocksLock(string trigger)
+    {
+        var isManual = trigger is not "调度";
+
+        if (isManual)
+        {
+            Log.Warn($"自检拦截上锁［{trigger}］：尚未配置任何认证方式，锁屏后将无法解锁");
+            ShowNoAuthDialog(trigger);
+            return;
+        }
+
+        // 自动调度：只在一个"拦截周期"开始时记一条，之后静默；
+        // 用户已明确表示暂不配置、或刚提醒过，都不再重复。
+        if (_noAuthWarnDismissed) return;
+
+        var now = DateTime.Now;
+        if (_lastNoAuthWarnAt is not null &&
+            (now - _lastNoAuthWarnAt.Value).TotalMinutes < NoAuthWarnIntervalMinutes)
+        {
+            return;
+        }
+
+        _lastNoAuthWarnAt = now;
+        Log.Warn($"自检拦截上锁［{trigger}］：尚未配置任何认证方式，锁屏后将无法解锁" +
+                 $"（后续 {NoAuthWarnIntervalMinutes} 分钟内的重复拦截不再记录）");
+        ShowNoAuthDialog(trigger);
+    }
+
+    /// <summary>同一类自检提醒的最小间隔（分钟）。</summary>
+    private const int NoAuthWarnIntervalMinutes = 10;
+
+    private void ShowNoAuthDialog(string trigger)
+    {
+        var where = trigger == "调度" ? "自动锁屏" : $"「{trigger}」";
+
+        var goConfig = AppDialog.Confirm(
+            null,
+            $"检测到尚未配置任何身份认证方式（U 盘 / 密码 / 动态码 / 应急码）。\n\n" +
+            $"为避免锁屏后无法解锁，已阻止本次{where}。\n\n" +
+            "是否现在前往设置配置一种认证方式？",
+            "暂不能锁屏",
+            "去配置",
+            "暂不配置",
+            danger: true);
+
+        if (goConfig)
+        {
+            _noAuthWarnDismissed = false;
+            // 此时必然未锁屏，设置门会因"零认证"自动放行，不会把人卡住
+            OpenSettingsRequireAuth("自检引导：请先配置一种认证方式");
+        }
+        else
+        {
+            _noAuthWarnDismissed = true;
+            Log.Warn("用户选择暂不配置认证方式；在配置完成前，所有上锁操作都会被拦截");
+            _floatWindow?.ShowBubble("未配置认证方式，已暂停锁屏", 5);
+        }
+    }
+
+    private void EngageLock(ScheduleVerdict verdict, string trigger = "调度")
     {
         if (_locked) return;
+
+        // ===== 自检：没有任何认证方式时，绝不锁屏 =====
+        // 否则一旦锁上就再也解不开（连设置都进不去），这是最坏的结果。
+        // 放在 EngageLock 里是因为它是所有上锁路径的唯一收口点，
+        // 挡在这里才不会漏掉某个入口。
+        if (!HasAnyAuthMethod())
+        {
+            _floatWindow?.SetSuppressed(false);
+            WarnNoAuthBlocksLock(trigger);
+            return;
+        }
+
         _locked = true;
 
-        Log.Info($"上锁：{verdict.Describe()}");
+        // 注意别直接打印 verdict.Describe()——那描述的是"调度当时的判定"，
+        // 手动上锁时调度可能正判定为"解锁"（比如课程已结束），
+        // 于是日志会出现"上锁：解锁"这种自相矛盾的话。这里只取判定依据做补充说明。
+        Log.Info($"上锁［{trigger}］依据：{verdict.Reason}");
 
         _lockWindow = new LockWindow(_cfg, _auth);
         _lockWindow.AttachEngine(_engine);
@@ -507,19 +662,10 @@ public sealed class AppHost
         _diagHook = _lock.HookInstalled;
         _diagCapture = _lock.CaptureProtectionApplied;
 
-        // 悬浮“下课”按钮：
-        //   开了「允许点击悬浮下课按钮直接解锁」-> 锁屏期间也留在最上层，作为第二解锁入口
-        //   否则按原设计隐藏，避免给出一条无凭据的绕过通道
-        if (_cfg.Auth.AllowButtonUnlockWithoutAuth && _floatWindow is not null)
-        {
-            _floatWindow.SetSuppressed(false);
-            _lock.KeepAbove(new System.Windows.Interop.WindowInteropHelper(_floatWindow).Handle);
-            Log.Info("锁屏期间保留悬浮“下课”按钮（已允许免凭据解锁）");
-        }
-        else
-        {
-            _floatWindow?.SetSuppressed(true);
-        }
+        // 悬浮“下课”按钮在锁屏期间一律隐藏：
+        // 它的语义是“手动上锁”，锁屏后再留着没有意义，
+        // 也会在锁屏层上多出一个视觉干扰。
+        _floatWindow?.SetSuppressed(true);
 
         // 锁屏/解锁不再放提示音：老师上课时会很突兀。
         // （Alerts.SoundEnabled 保留在配置里以便兼容，当前不再有任何播放点）
@@ -551,6 +697,32 @@ public sealed class AppHost
         // 解锁提示音已取消，保持安静
     }
 
+    /// <summary>
+    /// 悬浮按钮位置/缩起状态变了：写回配置。
+    /// 拖动可能很频繁，所以做个轻量节流——只在停下来后写一次。
+    /// </summary>
+    private DispatcherTimer? _layoutSaveTimer;
+
+    private void OnFloatLayoutChanged()
+    {
+        _layoutSaveTimer?.Stop();
+        _layoutSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+        _layoutSaveTimer.Tick += (_, _) =>
+        {
+            _layoutSaveTimer?.Stop();
+            _layoutSaveTimer = null;
+            try
+            {
+                ConfigStore.Save(_cfg);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"保存悬浮按钮位置失败：{ex.Message}");
+            }
+        };
+        _layoutSaveTimer.Start();
+    }
+
     // ---------------- 事件处理 ----------------
 
     private void OnAuthenticated(AuthMethod method)
@@ -567,72 +739,136 @@ public sealed class AppHost
         ReleaseLock($"认证通过（{method}）");
     }
 
+    /// <summary>
+    /// 用户在悬浮按钮上确认了「下课」——立即上锁。
+    ///
+    /// 注意语义：这个按钮是**手动上锁**入口，不是解锁。
+    /// 作息表仍然负责自动锁/自动解锁；这里只是让老师在下课离开时能主动锁上。
+    /// </summary>
     private void OnClassDismissed()
     {
         if (_floatWindow is null) return;
 
-        // 未锁屏时点“下课”：之前是直接 return，点什么都没反应。
-        // 现在改为“记录本节课已下课”，并压制接下来一段时间的自动上锁。
-        if (!_locked)
-        {
-            var minutes = _cfg.Auth.UnlockDurationMinutes > 0 ? _cfg.Auth.UnlockDurationMinutes : 10;
-            _manualUnlockUntil = DateTime.Now.AddMinutes(minutes);
-            Log.Info($"教师点击“下课”（未锁屏）：接下来 {minutes} 分钟内不自动上锁");
-            _floatWindow.ShowBubble($"已记录下课：接下来 {minutes} 分钟内不会自动上锁", 5);
-            return;
-        }
-
-        if (!_cfg.Auth.AllowButtonUnlockWithoutAuth)
-        {
-            _floatWindow.ShowBubble("已设置为需认证解锁，请使用锁屏上的认证方式");
-            return;
-        }
-
-        Log.Audit("下课按钮", true, "教师点击悬浮按钮宣告下课");
-        var minutes2 = _cfg.Auth.UnlockDurationMinutes;
-        if (minutes2 > 0) _manualUnlockUntil = DateTime.Now.AddMinutes(minutes2);
-        ReleaseLock("教师点击“下课”按钮");
-    }
-
-    private void OpenSettingsRequireAuth()
-    {
-        // 已经解锁状态下才允许进设置；锁屏状态下必须先在锁屏上通过认证
         if (_locked)
         {
-            Log.Warn("锁屏状态下请求进入设置被拒绝，需先通过认证");
+            // 已经锁着就不用再锁了（正常流程走不到这里，防御性处理）
+            _floatWindow.ShowBubble("当前已经是锁定状态");
+            return;
+        }
+
+        Log.Audit("下课按钮", true, "教师确认下课，手动上锁");
+
+        // 清掉手动解锁的压制，否则刚锁上就会被"未到时间"逻辑挡回去
+        _manualUnlockUntil = null;
+
+        EngageLock(_engine.Evaluate(DateTime.Now), "下课按钮");
+    }
+
+    private void OpenSettingsRequireAuth(string? gateReason = null)
+    {
+        // 已经解锁状态下也要过认证门——否则学生只要等到下课就能直接翻设置改配置。
+        // 锁屏状态下更严格：必须先解除锁定。
+        if (_locked)
+        {
+            Log.Audit("设置门", false, "锁屏状态下请求进入设置，已拒绝");
             AppDialog.Warn(null,
-                "请先在锁屏界面通过任意一种认证方式解锁，然后再进入设置。",
+                "请先在锁屏界面通过认证解除锁定，然后再进入设置。",
                 "需要认证");
             return;
         }
 
-        if (_settingsWindow is not null && _settingsWindow.IsVisible)
+        // 认证门：U 盘 / 密码 / 动态码 / 应急码，按配置显示可用的方式。
+        // 注意：零认证时 Require 会直接放行（否则用户被永久锁在设置外），
+        // 所以"自检引导配置"这条路径一定能进得去。
+        //
+        // ⚠️ 关键：弹认证门之前必须**暂停锁屏的置顶重申**。
+        //    锁屏窗口是 Topmost，而且 TopMostLock 每 200ms 会把它重新提到最前，
+        //    这会把认证弹窗压在下面 —— 表现为"弹窗看不见/点不到，卡在锁屏界面"。
+        //    这里暂停，弹窗关闭后再恢复。
+        bool gatePassed;
+        _lock?.Pause();
+        try
         {
-            _settingsWindow.Activate();
+            var gateOwner = _floatWindow is { IsVisible: true } ? _floatWindow : null;
+            gatePassed = SettingsAuthGate.Require(gateOwner, _cfg, _auth,
+                gateReason ?? "进入设置会修改锁屏规则，请先验证身份");
+        }
+        finally
+        {
+            // 无论通过与否都要恢复锁屏置顶，否则锁屏会失去保护
+            _lock?.Resume();
+        }
+
+        if (!gatePassed)
+        {
+            Log.Audit("设置门", false, "认证未通过，设置未打开");
             return;
+        }
+
+        Log.Audit("设置门", true, "认证通过，打开设置");
+
+        // 复用已打开的窗口
+        if (_settingsWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        // ⚠️ 关键：字段里可能残留一个**已关闭**的窗口对象。
+        //   WPF 的窗口一旦 Close 就不能再 Show（会抛 InvalidOperationException）。
+        //   所以这里必须同时判断"是否存在"和"是否还能用"，不能只看 null。
+        if (_settingsWindow is not null && !IsWindowReusable(_settingsWindow))
+        {
+            Log.Info("设置窗口已被关闭，重新创建");
+            _settingsWindow = null;
         }
 
         // 预热过就直接复用，避免“点开设置卡半秒”
         _lock?.Pause();
 
-        if (_settingsWindow is null)
-        {
-            _settingsWindow = new SettingsWindow(_cfg, _auth);
-            _settingsWindow.ConfigSaved += OnConfigSaved;
-            _settingsWindow.DiagnosticsRequested += PushDiagnostics;
-            _settingsWindow.Closed += (_, _) =>
-            {
-                PushDiagnosticsTo(_settingsWindow);
-                _settingsWindow = null;
-                _lock?.Resume();
-            };
-        }
+        _settingsWindow ??= CreateSettingsWindow();
 
         _settingsWindow.Show();
         _settingsWindow.Activate();
         PushDiagnostics();
 
         Log.Info("打开设置界面");
+    }
+
+    /// <summary>
+    /// 窗口是否还能复用。WPF 窗口关掉后不能再次 Show，
+    /// 只能靠重新 new 一个。用 Dispatcher 是否已关闭来判断。
+    /// </summary>
+    private static bool IsWindowReusable(Window w)
+    {
+        try
+        {
+            return !w.Dispatcher.HasShutdownStarted && !w.Dispatcher.HasShutdownFinished;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 统一创建设置窗口并挂好事件。
+    /// 所有创建路径都必须走这里——之前预热路径漏挂了 Closed，
+    /// 导致关窗后字段残留一个死对象，再次打开设置就崩。
+    /// </summary>
+    private SettingsWindow CreateSettingsWindow()
+    {
+        var win = new SettingsWindow(_cfg, _auth);
+        win.ConfigSaved += OnConfigSaved;
+        win.DiagnosticsRequested += PushDiagnostics;
+        win.Closed += (_, _) =>
+        {
+            PushDiagnosticsTo(win);
+            // 只有还是当前实例时才清空，避免误清掉后来新建的窗口
+            if (ReferenceEquals(_settingsWindow, win)) _settingsWindow = null;
+            _lock?.Resume();
+        };
+        return win;
     }
 
     /// <summary>启动后在空闲时预热设置窗口：把 XAML/BAML/JIT 的开销提前付掉，首次打开不再卡。</summary>
@@ -644,7 +880,9 @@ public sealed class AppHost
             {
                 try
                 {
-                    _settingsWindow ??= new SettingsWindow(_cfg, _auth);
+                    // 必须走 CreateSettingsWindow()，否则事件（尤其 Closed）挂不上，
+                    // 关窗后 _settingsWindow 会残留死对象，下次打开直接崩。
+                    _settingsWindow ??= CreateSettingsWindow();
                 }
                 catch (Exception ex)
                 {
@@ -660,6 +898,17 @@ public sealed class AppHost
         _engine = new ScheduleEngine(_cfg);
         _auth.UpdateConfig(_cfg);
         Log.Configure(_cfg.Logging.Directory, _cfg.Logging.RetentionDays, _cfg.Logging.Enabled);
+        Log.SetDebugEnabled(_cfg.Logging.DebugVerbose);
+
+        // 配置变了，之前"暂不配置认证方式"的决定要重新评估：
+        // 配好了就该恢复正常锁屏；清空了则重新开始提醒。
+        _noAuthWarnDismissed = false;
+        _lastNoAuthWarnAt = null;
+
+        var hasAuth = HasAnyAuthMethod();
+        Log.Info(hasAuth
+            ? "自检：已配置认证方式，锁屏功能可用"
+            : "自检：仍未配置任何认证方式，上锁操作将继续被拦截");
 
         _floatWindow?.ApplyConfig(_cfg);
         _lockWindow?.UpdateConfig(_cfg);

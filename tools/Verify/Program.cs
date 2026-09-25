@@ -47,8 +47,13 @@ public static class CryptoChecks
 
         Console.WriteLine();
         Console.WriteLine("=== TOTP 校验与漂移容忍 ===");
+
+        // ⚠️ 这一段刻意用**固定的基准时刻**而不是 DateTime.UtcNow。
+        //    用"当前真实时间"会让断言随运行时刻漂移：如果恰好跨过 30 秒步长边界，
+        //    "31 秒前的码"可能与当前码落在同一格，导致偶发假失败（实际踩到过）。
         var secret = Totp.GenerateSecret();
-        var now = DateTime.UtcNow;
+        var now = new DateTime(2026, 3, 15, 10, 30, 15, DateTimeKind.Utc);  // 固定在步长中段
+
         var code = Totp.Compute(secret, now);
         Check($"当前码 {code} 可通过", Totp.Verify(secret, code, now));
 
@@ -59,17 +64,23 @@ public static class CryptoChecks
         Check("非数字被拒绝", !Totp.Verify(secret, "abcdef", now));
         Check("位数不足被拒绝", !Totp.Verify(secret, "123", now));
 
-        // 上一步长的码在 driftSteps=1 下应被接受；这里要确保它和当前码不同，
-        // 否则等于在重复验证当前码。若碰巧相同就再往前推一步长。
+        // 基准时刻在第 15 秒（步长中段），所以 31 秒前必然落在上一步长
         var prevCode = Totp.Compute(secret, now.AddSeconds(-31));
-        if (prevCode == code) prevCode = Totp.Compute(secret, now.AddSeconds(-61));
-        Check($"漂移 1 步容忍（上一步码 {prevCode}）", Totp.Verify(secret, prevCode, now));
+        Check($"漂移 1 步容忍（上一步码 {prevCode}）",
+            prevCode != code && Totp.Verify(secret, prevCode, now));
 
+        // 95 秒前 = 至少 3 个步长之前，超出 driftSteps=1 的容忍范围
         var oldCode = Totp.Compute(secret, now.AddSeconds(-95));
         Check("漂移 3 步应被拒绝", !Totp.Verify(secret, oldCode, now));
 
         var remain = Totp.SecondsRemaining(now);
         Check($"剩余秒数在 1..30 之间（={remain}）", remain is >= 1 and <= 30);
+
+        // 真实时钟也要能正常工作（只验证不抛异常，不断言具体值）
+        var realNow = DateTime.UtcNow;
+        var realCode = Totp.Compute(secret, realNow);
+        Check("真实时钟下也能正常生成/校验",
+            Totp.Verify(secret, realCode, realNow) && realCode.Length == 6);
 
         Console.WriteLine();
         Console.WriteLine("=== PBKDF2 密码哈希 ===");

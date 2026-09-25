@@ -5,11 +5,11 @@ obj/
 *.user
 *.suo
 
-# 预览图（可由工具重新生成）
-/preview/*.png
-docs/*.png
-
 # 临时文件
 *.log
 *.tmp
 .tmp/
+
+# 本地配置（便携模式下会放在 exe 同目录，可能含密码哈希/密钥，绝不提交）
+config.json
+config.json.bak

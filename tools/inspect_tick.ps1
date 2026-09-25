@@ -1,4 +1,4 @@
-$root = 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock\src\ClassroomBreakLock'
+$root = '$PSScriptRoot\..\src\ClassroomBreakLock'
 Set-Location $root
 
 Write-Output '===== _manualUnlockUntil usage ====='
@@ -21,4 +21,4 @@ Get-ChildItem -Recurse -File -Include *.cs |
 
 Write-Output ''
 Write-Output '===== README exists? ====='
-Get-ChildItem 'C:\Users\cober\.openclaw\workspace\projects\ClassroomBreakLock' -File | Select-Object Name
+Get-ChildItem '$PSScriptRoot\..' -File | Select-Object Name

@@ -39,17 +39,25 @@
                        FontSize="12.5" LineHeight="19" TextWrapping="Wrap"/>
         </Border>
 
-        <!-- 圆形“下课”按钮：天依蓝渐变，无外框。右对齐，这样窗口加宽时按钮不会移动 -->
+        <!--
+            圆形“下课”按钮：天依蓝渐变，无外框。右对齐，这样窗口加宽时按钮不会移动。
+            注意：尺寸**不在这里绑定**——由 ApplyVisualState() 按展开/缩起状态直接赋值。
+
+            拖动相关事件用 **Preview**（隧道）版本：
+              WPF 的 Button 会在冒泡阶段把 MouseLeftButtonDown 转成自己的 Click 逻辑并
+              标记 Handled，导致挂在 Button 上的普通 MouseLeftButtonDown 收不到
+              （实测：Win32 的 WM_LBUTTONDOWN 到达了，但 OnDragStart 从未执行）。
+              Preview 事件从根向下传递，在 Button 处理之前就先拿到，稳定可靠。
+        -->
         <Button x:Name="MainButton"
                 Grid.Row="1"
                 HorizontalAlignment="Right"
-                Width="{Binding ButtonSize}" Height="{Binding ButtonSize}"
                 Cursor="Hand"
                 Click="OnClick"
-                MouseLeftButtonDown="OnDragStart"
-                MouseMove="OnDragMove"
-                MouseLeftButtonUp="OnDragEnd"
-                ToolTip="点击表示本节课结束，进入课间">
+                PreviewMouseLeftButtonDown="OnDragStart"
+                PreviewMouseMove="OnDragMove"
+                PreviewMouseLeftButtonUp="OnDragEnd"
+                ToolTip="点击后确认下课，随即锁定多媒体">
             <Button.Template>
                 <ControlTemplate TargetType="Button">
                     <Grid>
@@ -67,12 +75,19 @@
                 </ControlTemplate>
             </Button.Template>
 
-            <StackPanel>
-                <TextBlock x:Name="ButtonText" Text="下课" FontSize="20" FontWeight="SemiBold"
-                           Foreground="White" HorizontalAlignment="Center"/>
-                <TextBlock x:Name="ButtonSubText" Text="" FontSize="11" Foreground="#DCEBFA"
-                           HorizontalAlignment="Center" Margin="0,2,0,0"/>
-            </StackPanel>
+            <Grid>
+                <StackPanel x:Name="ButtonContent">
+                    <TextBlock x:Name="ButtonText" Text="下课" FontSize="20" FontWeight="SemiBold"
+                               Foreground="White" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ButtonSubText" Text="" FontSize="11" Foreground="#DCEBFA"
+                               HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                </StackPanel>
+
+                <!-- 缩起状态下的居中圆点（表示"点我展开"） -->
+                <Ellipse x:Name="CollapsedDot" Width="7" Height="7" Fill="White"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Visibility="Collapsed"/>
+            </Grid>
         </Button>
     </Grid>
 </Window>
