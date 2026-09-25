@@ -1,0 +1,433 @@
+<Window x:Class="ClassroomBreakLock.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="课间锁 - 设置"
+        Height="820" Width="1180"
+        WindowStartupLocation="CenterScreen"
+        Background="#F3F3F3" Foreground="#1B1B1B"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        Topmost="True">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Theme/CI.Settings.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- ===== 顶栏 ===== -->
+        <Border DockPanel.Dock="Top" Style="{StaticResource TopBar}">
+            <Grid>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="课间锁设置" FontSize="17" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ConfigPathText" FontSize="12"
+                               Foreground="{StaticResource Ink3Brush}"
+                               VerticalAlignment="Center" Margin="14,0,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="保存并应用" Style="{StaticResource BtnPrimary}" Click="OnSaveClick"/>
+                    <Button Content="重载配置" Click="OnReloadClick"/>
+                    <Button Content="关闭" Margin="0" Click="OnCloseClick"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===== 底栏 ===== -->
+        <Border DockPanel.Dock="Bottom" Style="{StaticResource BottomBar}">
+            <Grid>
+                <TextBlock x:Name="StatusBarText" Text="就绪" FontSize="12.5"
+                           Foreground="{StaticResource Ink2Brush}"/>
+                <TextBlock x:Name="VerdictText" FontSize="12.5" Foreground="{StaticResource WarnBrush}"
+                           HorizontalAlignment="Right"/>
+            </Grid>
+        </Border>
+
+        <!-- ===== 左侧导航 + 内容 ===== -->
+        <TabControl>
+            <!-- ============ 常规 ============ -->
+            <TabItem Header="常规">
+                <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource PageFade}">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+
+                        <TextBlock Text="基本" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="教室标识与锁屏页文案" Style="{StaticResource GroupDesc}"/>
+
+                        <Border Style="{StaticResource NoticeCard}">
+                            <StackPanel>
+                                <CheckBox x:Name="TestModeCheck"
+                                          Content="测试模式（不自动锁屏，仅手动触发）"
+                                          FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource WarnBrush}"
+                                           FontSize="12"
+                                           Text="开启时程序不会按作息表自动上锁，可从托盘图标或 Ctrl+Alt+Shift+K 手动测锁屏效果。首次配置 U 盘/密码时请保持开启，配置完成后再关闭。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="教室名称" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="ClassroomNameBox"/>
+                        <CheckBox x:Name="EnabledCheck" Content="启用课间锁（取消勾选 = 维护模式，全天不锁）"/>
+                        <TextBlock Text="锁屏页大标题" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="LockTitleBox"/>
+                        <TextBlock Text="锁屏页提示语" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="LockSubtitleBox" Margin="0,0,0,4"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,20,0,20"/>
+
+                        <TextBlock Text="自动解锁与锁定时机" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="决定什么时候锁、什么时候提前放开" Style="{StaticResource GroupDesc}"/>
+
+                        <TextBlock Text="课前提前解锁分钟数（0 = 不提前，上课时才锁）"
+                                   Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="EarlyUnlockBox" Width="140" HorizontalAlignment="Left"/>
+                        <TextBlock Text="下课后延迟上锁秒数（给学生一点缓冲）"
+                                   Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="LockDelayBox" Width="140" HorizontalAlignment="Left"/>
+                        <CheckBox x:Name="AutoUnlockBreakCheck"
+                                  Content="课间也保持解锁（勾选后，只有上课时段才锁屏）"/>
+                        <CheckBox x:Name="AllowButtonUnlockCheck"
+                                  Content="允许点击悬浮“下课”按钮直接解锁（不需凭据）"/>
+                        <TextBlock Text="解锁持续分钟数（0 = 一直解锁到下个锁屏时段开始）"
+                                   Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="UnlockDurationBox" Width="140" HorizontalAlignment="Left"
+                                 Margin="0,0,0,4"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 作息表 ============ -->
+            <TabItem Header="作息表">
+                <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource PageFade}">
+                    <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 批量导入：不用一格格手填 -->
+                    <Border Grid.Row="0" Style="{StaticResource GroupCard}" Margin="0,0,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="批量导入课表" Style="{StaticResource GroupTitle}"/>
+                                <TextBlock Style="{StaticResource GroupDesc}" Margin="0" TextWrapping="Wrap"
+                                           Text="推荐：直接把课表软件导出的 YAML（ClassIsland / CESE，含 subjects + schedules）丢进来，一次铺满整周。也支持 Excel(.xlsx) / CSV / TXT，或从 Excel 直接粘贴。"/>
+                                <CheckBox x:Name="WeekdaysOnlyCheck" Content="只导入周一~周五（忽略周末）"
+                                          IsChecked="True" Margin="6,4,0,0"/>
+                                <TextBlock x:Name="ImportStateText" Style="{StaticResource HintText}"
+                                           Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="尚未导入过课表，当前作息为模板默认值。"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Top">
+                                <Button Content="从文件导入…" Style="{StaticResource BtnPrimary}"
+                                        Click="OnImportFromFile"/>
+                                <Button Content="粘贴导入…" Margin="0" Click="OnImportFromPaste"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="0,0,0,16">
+                        <TextBlock Text="按星期配置节次时段" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="「提前解锁(分)」留空则使用常规页的全局值"
+                                   Style="{StaticResource GroupDesc}" Margin="0,0,0,12"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="星期" VerticalAlignment="Center" Margin="0,0,10,0"
+                                       Foreground="{StaticResource Ink2Brush}"/>
+                            <ComboBox x:Name="DayCombo" Width="150" SelectionChanged="OnDayChanged"/>
+                            <CheckBox x:Name="DayEnabledCheck" Content="本日启用锁屏"
+                                      VerticalAlignment="Center" Margin="16,0,0,0"/>
+                            <Button Content="复制周一到周五的作息" Margin="16,0,10,10" Click="OnCopyWeekdays"/>
+                            <Button Content="复制到所有工作日" Click="OnCopyToWeekdays"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <DataGrid x:Name="PeriodGrid" Grid.Row="2" Height="280" AutoGenerateColumns="False"
+                              CanUserAddRows="False" CanUserDeleteRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="节次名" Binding="{Binding Name}" Width="170"/>
+                            <DataGridTextColumn Header="开始 HH:mm" Binding="{Binding Start}" Width="120"/>
+                            <DataGridTextColumn Header="结束 HH:mm" Binding="{Binding End}" Width="120"/>
+                            <DataGridCheckBoxColumn Header="此时段锁屏" Binding="{Binding LockDuring}" Width="120"/>
+                            <DataGridTextColumn Header="提前解锁(分)"
+                                                Binding="{Binding EarlyUnlockMinutesOverride}" Width="130"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,16,0,16">
+                        <Button Content="添加时段" Style="{StaticResource BtnPrimary}" Click="OnAddPeriod"/>
+                        <Button Content="删除选中" Style="{StaticResource BtnDanger}" Click="OnDeletePeriod"/>
+                        <TextBlock x:Name="PeriodHint" Foreground="{StaticResource Ink3Brush}" FontSize="12"
+                                   VerticalAlignment="Center" Margin="6,0,0,10"
+                                   Text="提示：列宽可拖动调整"/>
+                    </StackPanel>
+
+                    <!-- 整周概览：一屏看到七天各配了多少节，方便核对导入结果 -->
+                    <Border Grid.Row="4" Style="{StaticResource GroupCard}" Margin="0">
+                        <StackPanel>
+                            <TextBlock Text="整周概览" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="点任意一天可直接切过去编辑"
+                                       Style="{StaticResource GroupDesc}" Margin="0,0,0,10"/>
+                            <StackPanel x:Name="WeekOverviewPanel"/>
+                        </StackPanel>
+                    </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 认证 ============ -->
+            <TabItem Header="认证">
+                <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource PageFade}">
+                    <StackPanel MaxWidth="820" HorizontalAlignment="Left">
+
+                        <!-- U 盘 -->
+                        <TextBlock Text="U 盘认证" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="卷序列号 SN + 盘内密钥文件，双重绑定同一把盘"
+                                   Style="{StaticResource GroupDesc}"/>
+                        <DataGrid x:Name="UsbGrid" Height="150">
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="60"/>
+                                <DataGridTextColumn Header="名称" Binding="{Binding Label}" Width="170"/>
+                                <DataGridTextColumn Header="卷序列号(SN)" Binding="{Binding VolumeSerial}" Width="170"/>
+                                <DataGridTextColumn Header="密钥文件名" Binding="{Binding KeyFileName}" Width="150"/>
+                                <DataGridTextColumn Header="密钥哈希(截断)"
+                                                    Binding="{Binding KeyFileHash}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <Button Content="刷新已插入 U 盘" Click="OnRefreshDrives"/>
+                            <Button Content="登记为新钥匙" Style="{StaticResource BtnPrimary}" Click="OnRegisterUsb"/>
+                            <Button Content="移除选中钥匙" Style="{StaticResource BtnDanger}" Click="OnRemoveUsb"/>
+                        </StackPanel>
+                        <TextBlock x:Name="DriveListText" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <!-- 密码 -->
+                        <TextBlock Text="密码认证" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="PBKDF2 加盐存储，不保存明文" Style="{StaticResource GroupDesc}"/>
+                        <CheckBox x:Name="PwdEnabledCheck" Content="启用密码认证"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="300"/>
+                                <ColumnDefinition Width="300"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="新密码" Style="{StaticResource FieldLabel}"/>
+                                <PasswordBox x:Name="NewPwdBox"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="确认新密码" Style="{StaticResource FieldLabel}"/>
+                                <PasswordBox x:Name="ConfirmPwdBox"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="密码提示语（显示在锁屏页）" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="PwdHintBox" Width="420" HorizontalAlignment="Left"/>
+                        <Button Content="设置/修改密码" Style="{StaticResource BtnPrimary}"
+                                HorizontalAlignment="Left" Click="OnSetPassword"/>
+                        <TextBlock x:Name="PwdStateText" Style="{StaticResource HintText}"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <!-- TOTP -->
+                        <TextBlock Text="TOTP 动态码" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="RFC 6238，兼容 Google / Microsoft Authenticator"
+                                   Style="{StaticResource GroupDesc}"/>
+                        <CheckBox x:Name="TotpEnabledCheck" Content="启用 TOTP 动态码"/>
+                        <TextBlock Text="Base32 密钥" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="TotpSecretBox" Width="420" HorizontalAlignment="Left" IsReadOnly="True"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="生成新密钥" Style="{StaticResource BtnPrimary}" Click="OnGenerateTotp"/>
+                            <Button Content="复制 otpauth 链接" Click="OnCopyOtpUri"/>
+                        </StackPanel>
+                        <TextBlock x:Name="OtpUriText" Style="{StaticResource HintText}"
+                                   Width="720" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <!-- 应急码 -->
+                        <TextBlock Text="应急码" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="忘带 U 盘又没手机时的兜底通道" Style="{StaticResource GroupDesc}"/>
+                        <CheckBox x:Name="EmergencyEnabledCheck" Content="启用应急码"/>
+                        <CheckBox x:Name="EmergencyOneTimeCheck" Content="使用一次后自动作废（推荐）"/>
+                        <Button Content="生成新的应急码" Style="{StaticResource BtnAccent}"
+                                HorizontalAlignment="Left" Click="OnGenerateEmergency"/>
+                        <TextBlock x:Name="EmergencyCodeText" Style="{StaticResource CodeText}"/>
+                        <TextBlock x:Name="EmergencyStateText" Style="{StaticResource HintText}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 悬浮按钮 ============ -->
+            <TabItem Header="悬浮按钮">
+                <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource PageFade}">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                        <TextBlock Text="右下角“下课”按钮" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="锁屏时自动隐藏；双击按钮可直接进入设置"
+                                   Style="{StaticResource GroupDesc}"/>
+
+                        <CheckBox x:Name="FloatEnabledCheck" Content="显示悬浮按钮"/>
+                        <TextBlock Text="按钮文字" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="FloatTextBox" Width="240" HorizontalAlignment="Left"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="200"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="距屏幕右边距 (px)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="MarginRightBox"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="距屏幕下边距 (px)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="MarginBottomBox"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="200"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="按钮直径 (px)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="SizeBox"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="不透明度 0.1 ~ 1.0" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="OpacityBox"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="鼠标静止多少秒后淡出（0 = 不淡出）"
+                                   Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="FadeBox" Width="140" HorizontalAlignment="Left"/>
+                        <CheckBox x:Name="DraggableCheck" Content="允许拖动按钮调整位置"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 安全 ============ -->
+            <TabItem Header="安全">
+                <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource PageFade}">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                        <TextBlock Text="置顶与防绕过" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="锁屏时压盖其它窗口并屏蔽常用退出手段"
+                                   Style="{StaticResource GroupDesc}"/>
+
+                        <CheckBox x:Name="TopMostCheck" Content="置顶压盖所有窗口（每 200ms 重申 Z 序）"/>
+                        <CheckBox x:Name="BlockHotkeyCheck"
+                                  Content="屏蔽系统热键（Win / Alt+Tab / Alt+F4 / Ctrl+Esc / Ctrl+Shift+Esc）"/>
+                        <CheckBox x:Name="ExcludeCaptureCheck"
+                                  Content="从截屏/录屏/投屏中排除锁屏窗口（需 Win10 2004+）"/>
+                        <CheckBox x:Name="WatchdogCheck" Content="启用看门狗（进程被结束后自动重启）"/>
+                        <TextBlock Text="看门狗巡检间隔（秒）" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="WatchdogIntervalBox" Width="140" HorizontalAlignment="Left"
+                                 Margin="0,0,0,4"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <TextBlock Text="运行状态自检" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="当前置顶、钩子、捕获保护等实际生效情况"
+                                   Style="{StaticResource GroupDesc}"/>
+                        <Border Style="{StaticResource GroupCard}" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock x:Name="DiagLockStateText" Text="锁屏状态：-" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="DiagTopMostText" Text="置顶：-" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="DiagHookText" Text="键盘钩子：-" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="DiagCaptureText" Text="捕获保护：-" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="DiagAdminText" Text="管理员权限：-" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="DiagBlockedText" Text="已拦截按键次数：-" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Button Content="刷新自检" HorizontalAlignment="Left" Click="OnRefreshDiag"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <!-- ClassIsland 状态同步 -->
+                        <TextBlock Text="ClassIsland 状态同步" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Style="{StaticResource GroupDesc}" TextWrapping="Wrap"
+                                   Text="开启后本机监听一个端口（仅 127.0.0.1，不对外暴露）。在 ClassIsland 里用【自动化 → 运行程序】按上下课时机请求 /class/start 或 /class/end，就能让它直接驱动锁屏，不必要求两边作息表完全一致。"/>
+                        <CheckBox x:Name="SyncEnabledCheck" Content="启用本地接收端口（仅 127.0.0.1）"/>
+                        <CheckBox x:Name="SyncLockStartCheck" Content="收到「上课」就立即上锁"/>
+                        <CheckBox x:Name="SyncUnlockEndCheck" Content="收到「下课」就立即解锁"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="*" MaxWidth="320"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="端口" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="SyncPortBox"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="令牌（留空则不校验）" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="SyncTokenBox"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="SyncStateText" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,10,0,0" TextWrapping="Wrap"
+                                   Text="ClassIsland 里这样配（建两条自动化）：&#10;· 上课时「运行程序」→ curl.exe -s http://127.0.0.1:8731/class/start?subject=课程名&#10;· 下课时「运行程序」→ curl.exe -s http://127.0.0.1:8731/class/end&#10;想验证通不通，浏览器直接打开 http://127.0.0.1:8731/state 即可。"/>
+
+                        <Border Height="1" Background="{StaticResource StrokeSoftBrush}" Margin="0,22,0,22"/>
+
+                        <TextBlock Text="日志" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock Text="按天分文件，记录所有解锁与失败尝试"
+                                   Style="{StaticResource GroupDesc}"/>
+                        <CheckBox x:Name="LogEnabledCheck" Content="启用日志"/>
+                        <TextBlock Text="日志目录（留空 = %ProgramData%\ClassroomBreakLock\logs）"
+                                   Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="LogDirBox"/>
+                        <TextBlock Text="日志保留天数" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="LogRetentionBox" Width="140" HorizontalAlignment="Left"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="打开日志目录" Click="OnOpenLogDir"/>
+                            <Button Content="打开配置文件位置" Click="OnOpenConfigDir"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 日期覆盖 ============ -->
+            <TabItem Header="日期覆盖">
+                <Grid Margin="24" Style="{StaticResource PageFade}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                        <TextBlock Text="特殊日期" Style="{StaticResource GroupTitle}"/>
+                        <TextBlock TextWrapping="Wrap" Style="{StaticResource GroupDesc}"
+                                   Text="用于调休、考试、临时放假等。勾选「Locked」表示这天强制上锁（即使本来是周末）；不勾选表示这天全天解锁。"/>
+                    </StackPanel>
+                    <DataGrid x:Name="OverrideGrid" Grid.Row="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="日期 yyyy-MM-dd" Binding="{Binding Date}" Width="170"/>
+                            <DataGridCheckBoxColumn Header="Locked(强制上锁)" Binding="{Binding Locked}" Width="160"/>
+                            <DataGridTextColumn Header="备注" Binding="{Binding Note}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Content="添加一行" Style="{StaticResource BtnPrimary}" Click="OnAddOverride"/>
+                        <Button Content="删除选中" Style="{StaticResource BtnDanger}" Click="OnDeleteOverride"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

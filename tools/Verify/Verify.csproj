@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BreakLockVerify</AssemblyName>
+    <RootNamespace>BreakLockVerify</RootNamespace>
+    <StartupObject>BreakLockVerify.EntryPoint</StartupObject>
+  </PropertyGroup>
+
+  <!--
+    直接引用主程序的源码而非复制，保证验证的就是实际运行的那份逻辑。
+    只取纯逻辑文件（不含 WPF 依赖），所以这个测试项目不需要 WPF。
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\ClassroomBreakLock\Auth\Totp.cs" Link="src\Totp.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Auth\HashUtil.cs" Link="src\HashUtil.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\AppConfig.cs" Link="src\AppConfig.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\Schedule.cs" Link="src\Schedule.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Config\AuthConfig.cs" Link="src\AuthConfig.cs" />
+    <Compile Include="..\..\src\ClassroomBreakLock\Scheduling\ScheduleEngine.cs" Link="src\ScheduleEngine.cs" />
+  </ItemGroup>
+
+</Project>

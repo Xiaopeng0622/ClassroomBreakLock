@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <!--
+      需要 WinForms 只为托盘图标 (NotifyIcon)。
+      为避免 WPF/WinForms 类型重名造成大面积歧义，已关闭 ImplicitUsings，
+      并只在 AppHost.cs 里用全限定名或别名引用 WinForms 类型。
+    -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- 关掉隐式 using，避免 System.Windows.Forms 与 WPF 类型大面积命名冲突 -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>ClassroomBreakLock.Program</StartupObject>
+    <AssemblyName>ClassroomBreakLock</AssemblyName>
+    <RootNamespace>ClassroomBreakLock</RootNamespace>
+    <!-- 模板阶段不启用过激的裁剪，方便调试；发布时可加 -p:PublishSingleFile=true -->
+    <Version>0.1.0</Version>
+    <Product>教室多媒体课间锁</Product>
+    <Company>ClassroomBreakLock</Company>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <!-- exe / 任务栏 / 托盘统一使用自定义头像图标 -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 作为 WPF 资源嵌入，供托盘图标在运行时加载 -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+</Project>
