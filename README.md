@@ -10,6 +10,14 @@
 
 ---
 
+## 下载
+
+不想自己编译的话，直接下 Release 里的**自包含单文件版**（目标机免装 .NET 运行时）：
+
+👉 **[最新 Release](https://github.com/Xiaopeng0622/ClassroomBreakLock/releases/latest)** — 解压后双击 `ClassroomBreakLock.exe` 即可
+
+---
+
 ## 特性一览
 
 | 功能 | 说明 |

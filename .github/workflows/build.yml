@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/ClassroomBreakLock/ClassroomBreakLock.csproj
+
+      - name: Build (Release)
+        run: dotnet build src/ClassroomBreakLock/ClassroomBreakLock.csproj -c Release --no-restore -nologo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClassroomBreakLock-Release
+          path: src/ClassroomBreakLock/bin/Release/net8.0-windows/ClassroomBreakLock.exe
+          if-no-files-found: warn
